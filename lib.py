@@ -1,6 +1,6 @@
 import os, re, time, \
     subprocess as sp
-
+from icecream import ic
 ROOT = os.path.dirname(
     os.path.abspath(__file__)
 )
@@ -13,8 +13,8 @@ SIM_DEBUG_CMD = os.path.join(ROOT, 'spike_debug_cmd.txt')
 LINKER_SCRIPT = os.path.join(ROOT, 'link.ld')
 RISCV32_GNU_TOOLCHAIN = os.path.join(
     os.environ['RISCV_GNU_TOOLCHAIN'],
-    'rv32gcv',
-    'bin'
+    # 'rv32gcv',
+    # 'bin'
 )
 RISCV_SIM = os.environ['SPIKE_PATH']
 os.environ['PATH'] = os.pathsep.join((
@@ -97,7 +97,8 @@ def run_and_compare(code, ref):
             debug_cmds.append(f'mem {k[4: -1]}\n')
             results[k] = {'ref': v}
         elif re.search(r'v[0-9]{1,2}', k) is not None:
-            debug_cmds.append(f'vreg 0 {k}\n')
+            debug_cmds.append(f'vreg 0 {k[1:]}\n')
+            ic(f'vreg 0 {k[1:]}\n')
             results[k] = {'ref': v}
         else:
             return {'err': 'Invalid reference format'}
@@ -146,9 +147,10 @@ if __name__ == '__main__':
         'a0': f'0x{'0' * 8}',
         'a1': f'0x{'0' * 8}',
         f'mem[0x8{'0' * 7}]': f'0x{'0' * 8}',
-        'v0': [
-            f'0x{'0' * 16}'
-            for _ in range(2)
-        ]
+        **{f'v{i}': [f'0x{'0' * 16}' for _ in range(2)] for i in range(2, 7)}
     })
-    print(f'\n{results = }')
+    for reg, result in results.items():
+        print(f'{reg}:')
+        print(f"  Reference: {result['ref']}")
+        print(f"  Source: {result['src']}")
+        print(f"  Status: {result['status']}\n")

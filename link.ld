@@ -1,5 +1,5 @@
 OUTPUT_ARCH( "riscv" )
-ENTRY(rvtest_entry_point)
+ENTRY(_start)
 
 SECTIONS
 {
@@ -11,8 +11,8 @@ SECTIONS
   .text : { *(.text) }
   . = ALIGN(0x1000);
   .data : { *(.data) }
-  .data.string : { *(.data.string)}
   .bss : { *(.bss) }
+  . = ALIGN(0x1000);  /* Ensure stack alignment */
+  __stacktop = . + 0x1000;  /* Define stack top 4KB above .bss */
   _end = .;
 }
-
