@@ -564,3 +564,11 @@ Jan 10, 2025 4:41:28 PM org.eclipse.lsp4j.jsonrpc.services.GenericEndpoint notif
 INFO: Unsupported notification method: $/setTrace
 Jan 10, 2025 5:53:08 PM org.eclipse.lsp4j.jsonrpc.services.GenericEndpoint notify
 INFO: Unsupported notification method: $/setTrace
+2025.01.11 00:45:53 INFO  Shutting down server
+2025.01.11 00:45:53 INFO  shutting down Metals
+2025.01.11 00:45:53 INFO  Exiting server
+2025.01.15 14:17:11 INFO  Started: Metals version 1.4.2 in folders '/home/shahzaibkashif/coding_app/api_coding_app' for client Visual Studio Code 1.95.2.
+Jan 15, 2025 2:34:19 PM org.eclipse.lsp4j.jsonrpc.services.GenericEndpoint notify
+INFO: Unsupported notification method: $/setTrace
+2025.01.15 16:41:15 INFO  Shutting down server
+2025.01.15 16:41:15 INFO  shutting down Metals

@@ -10,7 +10,7 @@ from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime
 from sqlalchemy.types import Boolean
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
-from datetime import datetime
+from datetime import datetime, timezone
 from flask_sqlalchemy import SQLAlchemy
 
 
@@ -102,6 +102,20 @@ class Submission(db.Model):
     def __str__(self):
         return f"{self.user.username} - {self.question.title}"
 
+class Contest(db.Model):
+    __tablename__ = 'questions_contest'
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('auth_user.id'), nullable=False)
+    question_group_id = Column(Integer, ForeignKey('questions_questiongroup.id'), nullable=False)
+    start_time = Column(DateTime, nullable=True)
+    duration = Column(Integer, default=3600)  # Duration in seconds, default 60 minutes
+
+    user = relationship('User')
+    question_group = relationship('QuestionGroup')
+
+    def __str__(self):
+        return f"Contest by {self.user.username} for {self.question_group.name}"
+
 @celery.task(bind=True)
 def run_chisel_task(self, chisel_code, test_case, user_id, question_id, language_id):
     current_task.update_state(state='STARTED', meta={'task_type': 'sbt'})
@@ -153,7 +167,7 @@ def run_chisel_task(self, chisel_code, test_case, user_id, question_id, language
     except Exception as e:
         return {'status': 'error', 'output': str(e)}
 
-@app.route('/rvcodehub/api/submit', methods=['POST'])
+@app.route('/rvcodehub/api/run_sbt', methods=['POST'])
 def submit_task():
     data = request.get_json()
     chisel_code = data.get('chisel_code')
@@ -173,7 +187,7 @@ def submit_task():
 
     return jsonify({'task_id': task.id}), 202
 
-@app.route('/rvcodehub/api/status/<task_id>', methods=['GET'])
+@app.route('/rvcodehub/api/run_sbt/status/<task_id>', methods=['GET'])
 def get_status(task_id):
     task_result = AsyncResult(task_id, app=celery)
     logList = []
@@ -213,6 +227,24 @@ def get_status(task_id):
         'queue_position': queue_position,
          "logList": logList
     })
+
+@app.route('/rvcodehub/api/contest/<int:contest_id>/remaining_time', methods=['GET'])
+def get_remaining_time(contest_id):
+    contest = Contest.query.get(contest_id)
+    if not contest:
+        return jsonify({'error': 'Contest not found'}), 404
+
+    if not contest.start_time:
+        return jsonify({'remaining_time': contest.duration})
+
+    elapsed_time = (datetime.now(timezone.utc) - contest.start_time).total_seconds()
+    remaining_time = contest.duration.total_seconds() - elapsed_time
+
+    if remaining_time < 0:
+        remaining_time = 0
+
+    formatted_remaining_time = time.strftime('%H:%M:%S', time.gmtime(remaining_time))
+    return jsonify({'remaining_time': formatted_remaining_time})
 
 if __name__ == '__main__':
     app.run(debug=True)
