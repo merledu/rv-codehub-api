@@ -1,6 +1,6 @@
-import os, re, time, \
+import os, re, \
     subprocess as sp
-from icecream import ic
+
 ROOT = os.path.dirname(
     os.path.abspath(__file__)
 )
@@ -11,11 +11,7 @@ TMP_SIM_LOG = os.path.join(TMP, 'tmp.log')
 SIM_DEBUG_LOG = os.path.join(TMP, 'sim_debug.log')
 SIM_DEBUG_CMD = os.path.join(ROOT, 'spike_debug_cmd.txt')
 LINKER_SCRIPT = os.path.join(ROOT, 'link.ld')
-RISCV32_GNU_TOOLCHAIN = os.path.join(
-    os.environ['RISCV_GNU_TOOLCHAIN'],
-    # 'rv32gcv',
-    # 'bin'
-)
+RISCV32_GNU_TOOLCHAIN = os.environ['RISCV_GNU_TOOLCHAIN']
 RISCV_SIM = os.environ['SPIKE_PATH']
 os.environ['PATH'] = os.pathsep.join((
     RISCV32_GNU_TOOLCHAIN,
@@ -98,7 +94,6 @@ def run_and_compare(code, ref):
             results[k] = {'ref': v}
         elif re.search(r'v[0-9]{1,2}', k) is not None:
             debug_cmds.append(f'vreg 0 {k[1:]}\n')
-            ic(f'vreg 0 {k[1:]}\n')
             results[k] = {'ref': v}
         else:
             return {'err': 'Invalid reference format'}
@@ -123,6 +118,7 @@ def run_and_compare(code, ref):
         sim_debug_log.close()
     except sp.TimeoutExpired:
         sim_debug_log.close()
+        #with open()
     with open(SIM_DEBUG_LOG) as f:
         f.readline()
         src = [
