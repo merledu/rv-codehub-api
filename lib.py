@@ -1,6 +1,6 @@
-import os, re, \
+import os, re, time, \
     subprocess as sp
-
+from icecream import ic
 ROOT = os.path.dirname(
     os.path.abspath(__file__)
 )
@@ -11,7 +11,11 @@ TMP_SIM_LOG = os.path.join(TMP, 'tmp.log')
 SIM_DEBUG_LOG = os.path.join(TMP, 'sim_debug.log')
 SIM_DEBUG_CMD = os.path.join(ROOT, 'spike_debug_cmd.txt')
 LINKER_SCRIPT = os.path.join(ROOT, 'link.ld')
-RISCV32_GNU_TOOLCHAIN = os.environ['RISCV_GNU_TOOLCHAIN']
+RISCV32_GNU_TOOLCHAIN = os.path.join(
+    os.environ['RISCV_GNU_TOOLCHAIN'],
+    # 'rv32gcv',
+    # 'bin'
+)
 RISCV_SIM = os.environ['SPIKE_PATH']
 os.environ['PATH'] = os.pathsep.join((
     RISCV32_GNU_TOOLCHAIN,
@@ -118,7 +122,6 @@ def run_and_compare(code, ref):
         sim_debug_log.close()
     except sp.TimeoutExpired:
         sim_debug_log.close()
-        #with open()
     with open(SIM_DEBUG_LOG) as f:
         f.readline()
         src = [
@@ -126,27 +129,148 @@ def run_and_compare(code, ref):
             for line in f.readlines()
                 if re.search(r'VLEN=[0-9]+ bits; ELEN=[0-9]+ bits', line) is None
         ]
-    for i, k in enumerate(results.keys()):
-        if re.search(r'v[0-9]{1,2}', k) is not None:
-            vec_reg_info = src[i].split()
-            results[k]['src'] = [vec_reg_info[3], vec_reg_info[-1]]
-        else:
-            results[k]['src'] = src[i]
-        results[k]['status'] = 'match' if results[k]['src'] == results[k]['ref'] \
-            else 'mismatch'
-    return results
+    all_match = True
+    # ic(results)
+    try:
+        for i, k in enumerate(results.keys()):
+            if re.search(r'v[0-9]{1,2}', k) is not None:
+                vec_reg_info = src[i].split()
+                results[k]['src'] = [vec_reg_info[3], vec_reg_info[-1]]
+            else:
+                results[k]['src'] = src[i]
+            results[k]['status'] = 'match' if results[k]['src'] == results[k]['ref'] else 'mismatch'
+            if results[k]['status'] == 'mismatch':
+                all_match = False
+        ic(results)
+        # formatted_results = "\n".join(
+        # f"{reg}:\n  Reference:\n\t\t Hexadecimal: {result['ref']}\n\t\t Decimal: {int(result['ref'], 16)}\n  Source:\n\t\t Hexadecimal: {result['src']}\n\t\t Decimal: {int(result['src'], 16)}\n  Status: {result['status']}\n"
+        # for reg, result in results.items()
+        # )
+        def hex_to_dec_list(hex_list):
+            hex_list = hex_list[2:]
+            decimal_list = []
+            # ic(len(hex_list), hex_list)
+            for i in range(0, len(hex_list), 8):
+                decimal = int(hex_list[i:i+8], 16)
+                # ic(i,decimal)
+                decimal_list.append(decimal)
+            # ic(decimal_list)
+            return decimal_list
+            # return [int(hex_list[i:i+1], 16) for i in range(0, len(hex_list), 16)]
+
+        def format_result(result):
+            if isinstance(result['ref'], list):
+                ref_dec = [hex_to_dec_list(ref) for ref in result['ref']]
+                src_dec = [hex_to_dec_list(src) for src in result['src']]
+                ref_str = "\n\t\t ".join([f"Hexadecimal: {ref}, Decimal: {dec}" for ref, dec in zip(result['ref'], ref_dec)])
+                src_str = "\n\t\t ".join([f"Hexadecimal: {src}, Decimal: {dec}" for src, dec in zip(result['src'], src_dec)])
+            else:
+                ref_str = f"Hexadecimal: {result['ref']}, Decimal: {int(result['ref'], 16)}"
+                src_str = f"Hexadecimal: {result['src']}, Decimal: {int(result['src'], 16)}"
+            return f"Reference:\n\t\t {ref_str}\n  Source:\n\t\t {src_str}\n  Status: {result['status']}\n"
+
+        formatted_results = "\n".join(
+            f"{reg}:\n  {format_result(result)}"
+            for reg, result in results.items()
+        )
+        return {
+        'formatted_results': formatted_results,
+        'test_pass': all_match
+        }
+    except:
+        read_log = open(TMP_SIM_LOG, 'r')
+        log = read_log.readlines()
+        read_log.close()
+        return {
+            'test_pass': False,
+            'formatted_results': "".join(log[:100])
+        }
 
 if __name__ == '__main__':
     with open(os.path.join(ROOT, 'test.S')) as f:
         code = f.read()
     results = run_and_compare(code, {
-        'a0': f'0x{'0' * 8}',
-        'a1': f'0x{'0' * 8}',
-        f'mem[0x8{'0' * 7}]': f'0x{'0' * 8}',
-        **{f'v{i}': [f'0x{'0' * 16}' for _ in range(2)] for i in range(2, 7)}
+        # 'a0': f'0x{'0' * 8}',
+        # 's1': '0x000000d6',
+        # f'mem[0x8{'0' * 7}]': f'0x{'0' * 8}',
+        # f'mem[0x8{'0' * 6}4]': f'0x{'0' * 8}',
+        # f'mem[0x8{'0' * 6}8]': f'0x{'0' * 8}',
+        # f'mem[0x8{'0' * 6}C]': f'0x{'0' * 8}',
+        # f'mem[0x8{'0' * 5}10]': f'0x{'0' * 8}',
+        # f'mem[0x8{'0' * 5}14]': f'0x{'0' * 8}',
+        # f'mem[0x8{'0' * 5}18]': f'0x{'0' * 8}',
+        # f'mem[0x8{'0' * 5}1C]': f'0x{'0' * 8}',
+
+        # f'mem[0x8{'0' * 5}20]': f'0x{'0' * 8}',
+        # f'mem[0x8{'0' * 5}24]': f'0x{'0' * 8}',
+        # f'mem[0x8{'0' * 5}28]': f'0x{'0' * 8}',
+        # f'mem[0x8{'0' * 5}2C]': f'0x{'0' * 8}',
+        # f'mem[0x8{'0' * 5}30]': f'0x{'0' * 8}',
+        # f'mem[0x8{'0' * 5}34]': f'0x{'0' * 8}',
+        # f'mem[0x8{'0' * 5}38]': f'0x{'0' * 8}',
+        # f'mem[0x8{'0' * 5}3C]': f'0x{'0' * 8}',
+
+        
+
+        # 'v5': ['0x000000140000000f', '0x0000000a00000005'],
+        # 'v6': ['0x0000000000000000', '0x000000000000000a'],
+        # 'v7': ['0x0000000000000000', '0x000000000000000a'],
+        # 'v8': ['0x0000000000000000', '0x000000000000000e'],
+        # 'v9': ['0x000000640000005f', '0x0000005a00000055'],
+
+        # 'mem[0x80003000]': '0x00000005',
+        # 'mem[0x80003004]': '0x0000000a',
+        # 'mem[0x80003008]': '0x0000000f',
+        # 'mem[0x8000300c]': '0x00000014',
+        # 'mem[0x80003010]': '0x00000019',
+        # 'mem[0x80003014]': '0x0000001e',
+        # 'mem[0x80003018]': '0x00000023',
+        # 'mem[0x8000301c]': '0x00000028',
+        # 'mem[0x80003020]': '0x0000002d',
+        # 'mem[0x80003024]': '0x00000032',
+        # 'mem[0x80003028]': '0x00000037',
+        # 'mem[0x8000302c]': '0x0000003c',
+        # 'mem[0x80003030]': '0x00000041',
+        # 'mem[0x80003034]': '0x00000046',
+        # 'mem[0x80003038]': '0x0000004b',
+        # 'mem[0x8000303c]': '0x00000050',
+        # 'mem[0x80003040]': '0x00000055',
+        # 'mem[0x80003044]': '0x0000005a',
+        # 'mem[0x80003048]': '0x0000005f',
+        # 'mem[0x8000304c]': '0x00000064',
+        # 'mem[0x80000084]': '0x00000011',
+        # 'mem[0x80000088]': '0x00000011',
+        # 'mem[0x8000008C]': '0x00000011',
+        # 'mem[0x80000090]': '0x00000011',
+        # 'mem[0x80000094]': '0x00000011',
+        # 'mem[0x80000098]': '0x00000011',
+        # 'mem[0x8000009C]': '0x00000011',
+        # 'mem[0x800000A0]': '0x00000011',
+        # 'mem[0x800000A4]': '0x00000011',
+        # 'mem[0x800000A8]': '0x00000011',
+        # 'mem[0x800000AC]': '0x00000011',
+        # 'mem[0x800000B0]': '0x00000011',
+        # 'mem[0x800000B4]': '0x00000011',
+        # 'mem[0x800000B8]': '0x00000011',
+        # 'mem[0x800000BC]': '0x00000011',
+        
+
+        # 'a1': '0x00000000',
+        'v6': ['0x0000000000000000', '0x0000000000000014'],
+        'v7': ['0x0000000000000000', '0x000000000000000a'],
+        'v8': ['0x0000000000000000', '0x000000000000000a'],
+
+        # f'mem[0x8{'0' * 5}20]': f'0x{'0' * 8}',
+        # **{f'mem[0x8{"0" * 7}{i * 4:02x}]': f'0x{"0" * 8}' for i in range(8)},
+        # **{f'mem[0x8{"0" * 5}20{i * 4:02x}]': f'0x{"0" * 8}' for i in range(8)},
+        # **{f'v{i}': [f'0x{'0' * 16}' for _ in range(2)] for i in range(0, 10)}
     })
-    for reg, result in results.items():
-        print(f'{reg}:')
-        print(f"  Reference: {result['ref']}")
-        print(f"  Source: {result['src']}")
-        print(f"  Status: {result['status']}\n")
+#     # for reg, result in results.items():
+#     #     print(f'{reg}:')
+#     #     print(f"  Reference: {result['ref']}")
+#     #     print(f"  Source: {result['src']}")
+#     #     print(f"  Status: {result['status']}\n")
+
+    # print(results)
+    print(results['formatted_results'])
+    print(f"Test {'passed' if results['test_pass'] else 'failed'}")
