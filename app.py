@@ -12,8 +12,9 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
 from datetime import datetime, timezone
 from flask_sqlalchemy import SQLAlchemy
+from icecream import ic
 
-
+from lib import run_and_compare
 
 app = Flask(__name__)
 app.config.from_object('config')
@@ -167,8 +168,57 @@ def run_chisel_task(self, chisel_code, test_case, user_id, question_id, language
     except Exception as e:
         return {'status': 'error', 'output': str(e)}
 
+@celery.task(bind=True)
+def run_rvv_task(self, code, test_case, user_id, question_id, language_id):
+    current_task.update_state(state='STARTED', meta={'task_type': 'sbt'})
+    print(test_case)
+    print(code)
+    try:
+        results = run_and_compare(
+            code,
+            test_case
+            # {
+            #     'a0': f'0x{"0" * 8}',
+            #     'a1': f'0x{"0" * 8}',
+            #     f'mem[0x8{"0" * 7}]': f'0x{"0" * 8}',
+            #     **{f'v{i}': [f'0x{"0" * 16}' for _ in range(2)] for i in range(0, 7)}
+            # }
+        )
+
+        return_log = {
+            'status': ["PASSED" if results['test_pass'] else "FAILED"][0],
+            'output': results['formatted_results']
+        }
+        test_status = results['test_pass']
+
+        # Create or update a submission entry in the database within the application context
+        with app.app_context():
+            existing_submission = Submission.query.filter_by(user_id=user_id, question_id=question_id).first()
+            if existing_submission:
+                existing_submission.code = code
+                existing_submission.language_id = language_id
+                existing_submission.test_status = test_status
+                existing_submission.created_at = datetime.utcnow()
+                db.session.commit()
+            else:
+                new_submission = Submission(
+                    user_id=user_id,
+                    question_id=question_id,
+                    code=code,
+                    language_id=language_id,
+                    test_status=test_status
+                )
+                db.session.add(new_submission)
+                db.session.commit()
+
+        current_task.update_state(state='SUCCESS', meta={'task_type': 'rvv', 'result': 'RVV process done', "log": return_log, "output": return_log})
+        return return_log
+
+    except Exception as e:
+        return {'status': 'error', 'output': str(e)}
+
 @app.route('/rvcodehub/api/run_sbt', methods=['POST'])
-def submit_task():
+def run_sbt():
     data = request.get_json()
     chisel_code = data.get('chisel_code')
     test_case = data.get('test_case')
@@ -188,7 +238,7 @@ def submit_task():
     return jsonify({'task_id': task.id}), 202
 
 @app.route('/rvcodehub/api/run_sbt/status/<task_id>', methods=['GET'])
-def get_status(task_id):
+def get_sbt_status(task_id):
     task_result = AsyncResult(task_id, app=celery)
     logList = []
     task_id_bytes = task_id.encode('utf-8')
@@ -228,6 +278,59 @@ def get_status(task_id):
          "logList": logList
     })
 
+@app.route('/rvcodehub/api/run_rvv', methods=['POST'])
+def run_rvv():
+    data = request.get_json()
+    code = data.get('code')
+    test_case = data.get('test_case')
+    user_id = data.get('user_id')
+    question_id = data.get('question_id')
+    language_id = data.get('language_id')
+    task = run_rvv_task.apply_async(args=[code, test_case, user_id, question_id, language_id], queue='run_rvv')
+    return jsonify({'task_id': task.id}), 202
+
+@app.route('/rvcodehub/api/run_rvv/status/<task_id>', methods=['GET'])
+def get_rvv_status(task_id):
+    task_result = AsyncResult(task_id, app=celery)
+    logList = []
+    task_id_bytes = task_id.encode('utf-8')
+
+    filtered_pending_tasks = []
+    for t in redis_client.zrange("pending_tasks", 0, -1):
+        decoded_task_id = t.decode('utf-8')
+        async_result = AsyncResult(decoded_task_id, app=celery)
+        
+        # Only add tasks with 'PENDING' state to filtered list
+        if async_result.state == 'PENDING':
+            filtered_pending_tasks.append(t)
+
+    # Check the position of the current task_id in the filtered pending tasks
+    if task_id_bytes in filtered_pending_tasks:
+        task_position = filtered_pending_tasks.index(task_id_bytes) + 1
+    else:
+        task_position = "Not in queue"
+
+    # Determine the response status
+    if task_result.state == 'PENDING':
+        queue_position = task_position
+    elif task_result.state == 'STARTED':
+        logList = task_result.info.get('logList', [])
+        # Remove from pending tasks and mark as "In Progress"
+        redis_client.zrem("pending_tasks", task_id_bytes)
+        queue_position = "In Progress"
+    else:
+        # Mark as "Completed" for finished or failed tasks
+        queue_position = "Completed"
+    
+    return jsonify({
+       
+        'status': task_result.state,
+        'result': task_result.result if task_result.state == 'SUCCESS' else None,
+        'queue_position': queue_position,
+         "logList": logList
+    })
+
+
 @app.route('/rvcodehub/api/contest/<int:contest_id>/remaining_time', methods=['GET'])
 def get_remaining_time(contest_id):
     contest = Contest.query.get(contest_id)
@@ -245,6 +348,8 @@ def get_remaining_time(contest_id):
 
     formatted_remaining_time = time.strftime('%H:%M:%S', time.gmtime(remaining_time))
     return jsonify({'remaining_time': formatted_remaining_time})
+
+
 
 if __name__ == '__main__':
     app.run(debug=True)
