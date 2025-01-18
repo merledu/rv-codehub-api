@@ -1,0 +1,3 @@
+celery -A app.celery worker --loglevel=info -Q run_sbt -c 1
+
+celery -A app.celery worker --loglevel=info -Q run_rvv -c 1
