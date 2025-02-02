@@ -85,8 +85,13 @@ def run_and_compare(code, ref):
         'vector_reg (v0-v31)': ['0x0000000000000000', '0x0000000000000000'] ([element 1, element 0])
     }'''
     compile = compile_code(code)
+    # ic(compile)
     if compile['returncode']:
-        return compile
+        # return compile
+        return {
+            'test_pass': False,
+            'formatted_results': "\n".join([comp.replace("/home/shahzaibkashif/coding_app/api_coding_app/tmp/tmp.S", "file.S") for comp in compile["stderr"].split("\n")])
+        }
     debug_cmds = [f'untiln insn 0 0x{'0' * 8}\n']
     results = {}
     for k, v in ref.items():
@@ -122,6 +127,11 @@ def run_and_compare(code, ref):
         sim_debug_log.close()
     except sp.TimeoutExpired:
         sim_debug_log.close()
+        ic("timeout here")
+        return {
+            "test_pass": False,
+            "formatted_results": "Spike process timed out!\nMaybe the program is stuck on a loop"
+        }
     with open(SIM_DEBUG_LOG) as f:
         f.readline()
         src = [
@@ -256,9 +266,9 @@ if __name__ == '__main__':
         
 
         # 'a1': '0x00000000',
-        'v6': ['0x0000000000000000', '0x0000000000000014'],
-        'v7': ['0x0000000000000000', '0x000000000000000a'],
-        'v8': ['0x0000000000000000', '0x000000000000000a'],
+        'v0': ['0x0000000000000000', '0x00000000000009ca'],
+        # 'v7': ['0x0000000000000000', '0x000000000000000a'],
+        # 'v8': ['0x0000000000000000', '0x000000000000000a'],
 
         # f'mem[0x8{'0' * 5}20]': f'0x{'0' * 8}',
         # **{f'mem[0x8{"0" * 7}{i * 4:02x}]': f'0x{"0" * 8}' for i in range(8)},
@@ -271,6 +281,6 @@ if __name__ == '__main__':
 #     #     print(f"  Source: {result['src']}")
 #     #     print(f"  Status: {result['status']}\n")
 
-    # print(results)
+    print(results)
     print(results['formatted_results'])
     print(f"Test {'passed' if results['test_pass'] else 'failed'}")
