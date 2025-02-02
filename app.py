@@ -131,15 +131,34 @@ def run_chisel_task(self, chisel_code, test_case, user_id, question_id, language
         test_file.write(test_case)
 
     try:
-        result = subprocess.run(['sbt', 'test'], cwd=chisel_template_dir, capture_output=True, text=True)
-        print(result.stdout)
-        print(result.stderr)
-        
-        if result.returncode == 0:
-            return_log = {'status': 'PASSED', 'output': result.stdout}
-            test_status = True
-        else:
-            return_log = {'status': 'FAILED', 'output': result.stdout}
+        process = subprocess.Popen(
+            ['sbt', 'test'], cwd=chisel_template_dir,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+        )
+
+        test_status = True  # Default to true, will change if the process fails
+        return_log = {'status': 'PASSED', 'output': ''}
+        logList = ["SBT running....\n"]
+        current_task.update_state(state='STARTED', meta={'task_type': 'sbt', "logList":"".join(logList)})
+        # Print stdout in real-time
+        for line in process.stdout:
+            print(line, end="")  # Print each line as it appears
+            return_log['output'] += line  # Store output
+            logList.append(line)
+            current_task.update_state(state='STARTED', meta={'task_type': 'sbt', "logList":"".join(logList)})
+
+        # Print stderr in real-time
+        for line in process.stderr:
+            print(line, end="")
+            return_log['output'] += line
+            logList.append(line)
+            current_task.update_state(state='STARTED', meta={'task_type': 'sbt', "logList":"".join(logList)})
+
+
+        process.wait()  # Wait for the process to complete
+
+        if process.returncode != 0:
+            return_log['status'] = 'FAILED'
             test_status = False
 
         # Create or update a submission entry in the database within the application context
@@ -174,6 +193,9 @@ def run_rvv_task(self, code, test_case, user_id, question_id, language_id):
     print(test_case)
     print(code)
     try:
+        logList= ["RVV running...\n"]
+        current_task.update_state(state='STARTED', meta={'task_type': 'sbt', "logList":"".join(logList)})
+
         results = run_and_compare(
             code,
             test_case
